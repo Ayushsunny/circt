@@ -94,10 +94,10 @@ jobs:
           fetch-depth: 2
           submodules: "true"
 
-      # We'll be running clang-tidy later in this flow.
-      - name: Install clang-tidy
+      # We'll be running clang-tidy, etc. later in this flow.
+      - name: Install clang-tidy and yapf
         run: |
-          sudo apt-get install -y clang-tidy-9
+          sudo apt-get install -y clang-tidy-9 yapf3
           sudo update-alternatives --install /usr/bin/clang-tidy clang-tidy \
             /usr/bin/clang-tidy-9 100
 
@@ -245,6 +245,11 @@ jobs:
           fi
           echo "Clang-tidy found no problems"
           exit 0
+
+      # Run yapf to check Python formatting.
+      - name: python-format
+        if: ${{ always() }}
+        run: yapf3 --diff --recursive .
 
       # Upload the format and tidy patches to an artifact (zip'd) associated
       # with the workflow run. Only run this on a failure.
