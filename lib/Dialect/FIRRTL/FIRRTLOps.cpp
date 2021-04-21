@@ -712,7 +712,7 @@ static LogicalResult verifyMemOp(MemOp mem) {
     {
       auto dataTypeOption = portBundleType.getElement("data");
       if (!dataTypeOption && portKind == MemOp::PortKind::ReadWrite)
-        dataTypeOption = portBundleType.getElement("rdata");
+        dataTypeOption = portBundleType.getElement("wdata");
       if (!dataTypeOption) {
         mem.emitOpError() << "has no data field on port " << portName
                           << " (expected to see \"data\" for a read or write "
@@ -720,6 +720,9 @@ static LogicalResult verifyMemOp(MemOp mem) {
         return failure();
       }
       dataType = dataTypeOption.getValue().type;
+      // Read data is expected to have an outer flip, so strip that.
+      if (portKind == MemOp::PortKind::Read)
+        dataType = FlipType::get(dataType);
     }
 
     // Error if the data type isn't passive.
@@ -1036,8 +1039,14 @@ FIRRTLType SubfieldOp::getResultType(Type inType, StringAttr fieldName,
                                      Location loc) {
   if (auto bundleType = inType.dyn_cast<BundleType>()) {
     for (auto &elt : bundleType.getElements()) {
-      if (elt.name == fieldName)
+      if (elt.name == fieldName) {
+        // FIRRTL puts flips on element fields, not on the underlying
+        // types.  The result type of a subfield should strip a flip
+        // if one exists.
+        if (auto flipped = elt.type.dyn_cast<FlipType>())
+          return flipped.getElementType().cast<FIRRTLType>();
         return elt.type;
+      }
     }
     mlir::emitError(loc, "unknown field '")
         << fieldName.getValue() << "' in bundle type " << inType;
@@ -1046,7 +1055,7 @@ FIRRTLType SubfieldOp::getResultType(Type inType, StringAttr fieldName,
 
   if (auto flipType = inType.dyn_cast<FlipType>())
     if (auto subType = getResultType(flipType.getElementType(), fieldName, loc))
-      return FlipType::get(subType);
+      return subType;
 
   mlir::emitError(loc, "subfield requires bundle operand");
   return {};
